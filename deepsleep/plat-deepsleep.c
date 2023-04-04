@@ -43,6 +43,7 @@
 #include <stdbool.h>
 
 #include "deepSleepMgr.h"
+#include "pwrMgr.h"
 
 #define DEBUG_PLAT
 
@@ -82,7 +83,7 @@ void PLAT_DS_TERM(void)
  * @return    Return Code.
  * @retval    0 if successful.
  */
-int PLAT_DS_SetDeepSleep(uint32_t deep_sleep_timeout, bool *isGPIOWakeup, bool networkStandby)
+int PLAT_DS_SetDeepSleep(uint32_t deep_sleep_timeout, bool *isGPIOWakeup)
 {
     DEBUG_MSG("PLAT_DS_SetDeepSleep: putting to sleep, wakeup %d..\r\n", deep_sleep_timeout);
     return 0;
@@ -113,4 +114,14 @@ int PLAT_DS_GetLastWakeupKeyCode(IARM_Bus_DeepSleepMgr_WakeupKeyCode_Param_t *wa
     DEBUG_MSG("PLAT_DS_GetLastWakeupKeyCode: Get Last Wakeup KeyCode: 0");
     wakeupKeyCode->keyCode = 0;
     return 0;
+}
+
+int32_t PLAT_API_SetWakeupSrc(WakeupSrcType_t  srcType, bool  enable)
+{
+    return 1;
+}
+
+int32_t PLAT_API_GetWakeupSrc(WakeupSrcType_t  srcType, bool  *enable)
+{
+    return 1;
 }
