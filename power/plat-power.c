@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include "plat_power.h"
 
-static IARM_Bus_PWRMgr_PowerState_t power_state;
+static PWRMgr_PowerState_t power_state;
 
 /**
  * @brief Initialize the underlying Power Management module.
@@ -31,10 +31,10 @@ static IARM_Bus_PWRMgr_PowerState_t power_state;
  * @return    Return Code.
  * @retval    0 if successful.
  */
-int PLAT_INIT(void)
+pmStatus_t PLAT_INIT(void)
 {
-    power_state = IARM_BUS_PWRMGR_POWERSTATE_ON;
-    return 0;
+    power_state = PWRMGR_POWERSTATE_ON;
+    return PWRMGR_SUCCESS;
 }
 
 /**
@@ -46,7 +46,7 @@ int PLAT_INIT(void)
  * @return    Return Code.
  * @retval    0 if successful.
  */
-int PLAT_API_SetPowerState(IARM_Bus_PWRMgr_PowerState_t newState)
+pmStatus_t PLAT_API_SetPowerState( PWRMgr_PowerState_t newState )
 {
     /* TODO: Add standby mode */
     power_state = newState;
@@ -63,7 +63,7 @@ int PLAT_API_SetPowerState(IARM_Bus_PWRMgr_PowerState_t newState)
  * @return    Return Code.
  * @retval    0 if successful.
  */
-int PLAT_API_GetPowerState(IARM_Bus_PWRMgr_PowerState_t *curState)
+pmStatus_t PLAT_API_GetPowerState( PWRMgr_PowerState_t *curState )
 {
     *curState = power_state;
     return 0;
@@ -204,14 +204,15 @@ int PLAT_API_GetClockSpeed(uint32_t *speed)
  * @param None.
  * @return None.
  */
-void PLAT_TERM(void)
+pmStatus_t PLAT_TERM( void )
 {
-    return;
+    return PWRMGR_SUCCESS;
 }
 
-void PLAT_Reset(IARM_Bus_PWRMgr_PowerState_t newState)
+pmStatus_t PLAT_Reset( PWRMgr_PowerState_t newState )
 {
     system("reboot");
+    return PWRMGR_SUCCESS;
 }
 
 void PLAT_WHReset()

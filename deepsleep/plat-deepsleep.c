@@ -63,15 +63,16 @@
  * @return    Return Code.
  * @retval    0 if successful.
  */
-int PLAT_DS_INIT(void)
+DeepSleep_Return_Status_t PLAT_DS_INIT(void)
 {
-    return 0;
+    return DEEPSLEEPMGR_SUCCESS;
 }
 
 
 
-void PLAT_DS_TERM(void)
+DeepSleep_Return_Status_t PLAT_DS_TERM(void)
 {
+    return DEEPSLEEPMGR_SUCCESS;
 }
 
 /**
@@ -83,10 +84,10 @@ void PLAT_DS_TERM(void)
  * @return    Return Code.
  * @retval    0 if successful.
  */
-int PLAT_DS_SetDeepSleep(uint32_t deep_sleep_timeout, bool *isGPIOWakeup)
+DeepSleep_Return_Status_t PLAT_DS_SetDeepSleep(uint32_t deep_sleep_timeout, bool *isGPIOWakeup, bool networkStandby)
 {
     DEBUG_MSG("PLAT_DS_SetDeepSleep: putting to sleep, wakeup %d..\r\n", deep_sleep_timeout);
-    return 0;
+    return DEEPSLEEPMGR_SUCCESS;
 }
 
 
@@ -98,22 +99,24 @@ int PLAT_DS_SetDeepSleep(uint32_t deep_sleep_timeout, bool *isGPIOWakeup)
  * @param None
  * @return None
  */
-void PLAT_DS_DeepSleepWakeup(void)
+DeepSleep_Return_Status_t PLAT_DS_DeepSleepWakeup(void)
 {
-   DEBUG_MSG("PLAT_DS_DeepSleepWakeup: waking up from deep sleep\r\n");
+    DEBUG_MSG("PLAT_DS_DeepSleepWakeup: waking up from deep sleep\r\n");
+    return DEEPSLEEPMGR_SUCCESS;
 }
 
-int PLAT_DS_GetLastWakeupReason(DeepSleep_WakeupReason_t *wakeupReason)
+DeepSleep_Return_Status_t  PLAT_DS_GetLastWakeupReason(DeepSleep_WakeupReason_t *wakeupReason)
 {
     DEBUG_MSG("PLAT_DS_GetLastWakeupReason: Get Last Wakeup Reason: DEEPSLEEP_WAKEUPREASON_UNKNOWN");
     *wakeupReason = DEEPSLEEP_WAKEUPREASON_UNKNOWN;
+    return DEEPSLEEPMGR_SUCCESS;
 }
 
-int PLAT_DS_GetLastWakeupKeyCode(IARM_Bus_DeepSleepMgr_WakeupKeyCode_Param_t *wakeupKeyCode)
+DeepSleep_Return_Status_t PLAT_DS_GetLastWakeupKeyCode(DeepSleepMgr_WakeupKeyCode_Param_t *wakeupKeyCode)
 {
     DEBUG_MSG("PLAT_DS_GetLastWakeupKeyCode: Get Last Wakeup KeyCode: 0");
     wakeupKeyCode->keyCode = 0;
-    return 0;
+    return DEEPSLEEPMGR_SUCCESS;
 }
 
 int32_t PLAT_API_SetWakeupSrc(WakeupSrcType_t  srcType, bool  enable)
