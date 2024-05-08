@@ -12,9 +12,5 @@ These implementations adhere to the HAL Interface (HALIF) requirements and have 
 
 ## Related Repositories
 
-### Power Manager
-
-The Power Manager module is responsible for managing the power state of the device. 
-
 - **HAL Header Repository**: [rdk-halif-power_manager](https://github.com/rdkcentral/rdk-halif-power_manager)
 - **HAL Test Suite Repository**: [rdk-halif-test-power_manager](https://github.com/rdkcentral/rdk-halif-test-power_manager)
