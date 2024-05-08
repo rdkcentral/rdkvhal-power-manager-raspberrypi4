@@ -159,6 +159,68 @@ pmStatus_t PLAT_API_GetPowerState( PWRMgr_PowerState_t *curState )
     return PWRMGR_SUCCESS;
 }
 
+/**
+ * @brief Enables or disables the Wakeup source type
+ *
+ * @param [in] srcType  - Wake up source type
+ * @param [in] enable   - Enable or disable Wake up source
+ *                        True for enabled, false for disabled
+ *
+ * @return    pmStatus_t                        - Status
+ * @retval    PWRMGR_SUCCESS                    - Success
+ * @retval    PWRMGR_NOT_INITIALIZED            - Module is not initialised
+ * @retval    PWRMGR_OPERATION_NOT_SUPPORTED    - Wake up source type not supported
+ * @retval    PWRMGR_INVALID_ARGUMENT           - Parameter passed to this function is invalid
+ * @retval    PWRMGR_SET_FAILURE                - Failed to  power state
+ *
+ * @pre PLAT_INIT() must be called before calling this API
+ *
+ * @warning This API is Not thread safe
+ *
+ * @see PLAT_API_GetWakeupSrc(), PWRMGR_WakeupSrcType_t
+ */
+pmStatus_t PLAT_API_SetWakeupSrc(PWRMGR_WakeupSrcType_t srcType, bool enable) {
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+    if (!(srcType >= PWRMGR_WAKEUPSRC_VOICE && srcType < PWRMGR_WAKEUPSRC_MAX)) {
+        return PWRMGR_INVALID_ARGUMENT;
+    }
+    /* FIXME: RPi don't have WakeUp Source configurations at the moment. */
+    return PWRMGR_OPERATION_NOT_SUPPORTED;
+}
+
+/**
+ * @brief Checks if the wake up source is enabled or disabled for the device
+ *
+ * @param [in] srcType  - Wake up source type
+ * @param [out] enable  - Variable to store if wake up source type is enabled or disabled
+ *                        True for enabled, false for disabled
+ *
+ * @return    pmStatus_t                        - Status
+ * @retval    PWRMGR_SUCCESS                    - Success
+ * @retval    PWRMGR_NOT_INITIALIZED            - Module is not initialised
+ * @retval    PWRMGR_OPERATION_NOT_SUPPORTED    - Wake up source type not supported
+ * @retval    PWRMGR_INVALID_ARGUMENT           - Parameter passed to this function is invalid
+ * @retval    PWRMGR_GET_FAILURE                - Failed to get
+ *
+ * @pre PLAT_INIT() must be called before calling this API
+ *
+ * @warning This API is Not thread safe
+ *
+ * @see PWRMGR_WakeupSrcType_t, PLAT_API_SetWakeupSrc()
+ */
+pmStatus_t PLAT_API_GetWakeupSrc(PWRMGR_WakeupSrcType_t srcType, bool  *enable) {
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+    if (!(srcType >= PWRMGR_WAKEUPSRC_VOICE && srcType < PWRMGR_WAKEUPSRC_MAX) || NULL == enable) {
+        return PWRMGR_INVALID_ARGUMENT;
+    }
+    /* FIXME: RPi don't have WakeUp Source configurations at the moment. */
+    return PWRMGR_OPERATION_NOT_SUPPORTED;
+}
+
 #ifdef ENABLE_THERMAL_PROTECTION
 
 static float g_fTempThresholdHigh = 60.0f;
