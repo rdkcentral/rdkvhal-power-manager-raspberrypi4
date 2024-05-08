@@ -1,1 +1,20 @@
-Implementation of IARM Manager HAL layer for the RPI
+# IARM Manager HAL Layer for the RPI
+
+## Overview
+
+This project provides the Hardware Abstraction Layer (HAL) implementations for the IARM Manager on Raspberry Pi. It includes the following modules:
+
+- Power Manager
+- Deep Sleep Manager
+- IR Manager
+
+These implementations adhere to the HAL Interface (HALIF) requirements and have been tested against the respective HAL Test Suites listed below.
+
+## Related Repositories
+
+### Power Manager
+
+The Power Manager module is responsible for managing the power state of the device. 
+
+- **HAL Header Repository**: [rdk-halif-power_manager](https://github.com/rdkcentral/rdk-halif-power_manager)
+- **HAL Test Suite Repository**: [rdk-halif-test-power_manager](https://github.com/rdkcentral/rdk-halif-test-power_manager)

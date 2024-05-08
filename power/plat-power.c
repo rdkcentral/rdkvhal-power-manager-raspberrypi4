@@ -18,9 +18,54 @@
 */
 #include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include "plat_power.h"
 
 static PWRMgr_PowerState_t power_state;
+static pmStatus_t powerMgrStatus = PWRMGR_NOT_INITIALIZED;
+
+pthread_t worker_thread;
+pthread_mutex_t power_state_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * @brief A single shot worker thread to handle the power state changes.
+ * RPi does not have proper PowerManager implementation.
+ * Some references:
+ * https://learn.pi-supply.com/make/how-to-save-power-on-your-raspberry-pi/
+ * https://forums.raspberrypi.com/viewtopic.php?t=257144
+ * https://blues.com/blog/tips-tricks-optimizing-raspberry-pi-power/
+ */
+static void *powerMgrWorkerThread(void *arg) {
+    PWRMgr_PowerState_t received_state;
+
+    pthread_mutex_lock(&power_state_mutex);
+    received_state = *(PWRMgr_PowerState_t*)arg;
+    pthread_mutex_unlock(&power_state_mutex);
+
+    printf("Power state: %d\n", received_state);
+    switch (received_state) {
+        case PWRMGR_POWERSTATE_OFF:
+            printf("Powering off\n");
+            system("poweroff");
+            break;
+        case PWRMGR_POWERSTATE_STANDBY:
+            printf("Powering to standby\n");
+            break;
+        case PWRMGR_POWERSTATE_ON:
+            printf("Powering on\n");
+            break;
+        case PWRMGR_POWERSTATE_STANDBY_LIGHT_SLEEP:
+            printf("Powering to standby light sleep\n");
+            break;
+        case PWRMGR_POWERSTATE_STANDBY_DEEP_SLEEP:
+            printf("Powering to standby deep sleep\n");
+            break;
+        default:
+            printf("Invalid power state\n");
+            break;
+    }
+    return NULL;
+}
 
 /**
  * @brief Initialize the underlying Power Management module.
@@ -33,8 +78,24 @@ static PWRMgr_PowerState_t power_state;
  */
 pmStatus_t PLAT_INIT(void)
 {
-    power_state = PWRMGR_POWERSTATE_ON;
-    return PWRMGR_SUCCESS;
+    if (PWRMGR_NOT_INITIALIZED == powerMgrStatus) {
+        pthread_mutex_lock(&power_state_mutex);
+        power_state = PWRMGR_POWERSTATE_ON;
+        pthread_mutex_unlock(&power_state_mutex);
+        /* TODO: Act as per new state change requested. */
+        if (pthread_create(&worker_thread, NULL, powerMgrWorkerThread, &power_state) != 0) {
+            perror("Failed to create worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        if (pthread_detach(worker_thread) != 0) {
+            perror("Failed to detach worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        powerMgrStatus = PWRMGR_ALREADY_INITIALIZED;
+        return PWRMGR_SUCCESS;
+    }
+
+    return PWRMGR_ALREADY_INITIALIZED;
 }
 
 /**
@@ -48,9 +109,27 @@ pmStatus_t PLAT_INIT(void)
  */
 pmStatus_t PLAT_API_SetPowerState( PWRMgr_PowerState_t newState )
 {
-    /* TODO: Add standby mode */
-    power_state = newState;
-    return 0;
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+    // Verify that newState is one among PWRMgr_PowerState_t
+    if (newState >= PWRMGR_POWERSTATE_OFF && newState < PWRMGR_POWERSTATE_MAX) {
+        pthread_mutex_lock(&power_state_mutex);
+        power_state = newState;
+        pthread_mutex_unlock(&power_state_mutex);
+        /* TODO: Act as per new state change requested. */
+        if (pthread_create(&worker_thread, NULL, powerMgrWorkerThread, &power_state) != 0) {
+            perror("Failed to create worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        if (pthread_detach(worker_thread) != 0) {
+            perror("Failed to detach worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        return PWRMGR_SUCCESS;
+    }
+
+    return PWRMGR_INVALID_ARGUMENT;
 }
 
 /**
@@ -65,8 +144,19 @@ pmStatus_t PLAT_API_SetPowerState( PWRMgr_PowerState_t newState )
  */
 pmStatus_t PLAT_API_GetPowerState( PWRMgr_PowerState_t *curState )
 {
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+
+    if (NULL == curState) {
+        return PWRMGR_INVALID_ARGUMENT;
+    }
+
+    pthread_mutex_lock(&power_state_mutex);
     *curState = power_state;
-    return 0;
+    pthread_mutex_unlock(&power_state_mutex);
+
+    return PWRMGR_SUCCESS;
 }
 
 #ifdef ENABLE_THERMAL_PROTECTION
@@ -206,12 +296,34 @@ int PLAT_API_GetClockSpeed(uint32_t *speed)
  */
 pmStatus_t PLAT_TERM( void )
 {
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+    powerMgrStatus = PWRMGR_NOT_INITIALIZED;
     return PWRMGR_SUCCESS;
 }
 
 pmStatus_t PLAT_Reset( PWRMgr_PowerState_t newState )
 {
-    system("reboot");
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+    // Verify that newState is one among PWRMgr_PowerState_t
+    if (newState >= PWRMGR_POWERSTATE_OFF && newState < PWRMGR_POWERSTATE_MAX) {
+        pthread_mutex_lock(&power_state_mutex);
+        power_state = newState;
+        pthread_mutex_unlock(&power_state_mutex);
+        /* TODO: Act as per new state change requested. */
+        if (pthread_create(&worker_thread, NULL, powerMgrWorkerThread, &power_state) != 0) {
+            perror("Failed to create worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        if (pthread_detach(worker_thread) != 0) {
+            perror("Failed to detach worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        return PWRMGR_SUCCESS;
+    }
     return PWRMGR_SUCCESS;
 }
 
