@@ -132,13 +132,3 @@ DeepSleep_Return_Status_t PLAT_DS_GetLastWakeupKeyCode(DeepSleepMgr_WakeupKeyCod
     }
     return DEEPSLEEPMGR_NOT_INITIALIZED;
 }
-
-int32_t PLAT_API_SetWakeupSrc(WakeupSrcType_t  srcType, bool  enable)
-{
-    return 1;
-}
-
-int32_t PLAT_API_GetWakeupSrc(WakeupSrcType_t  srcType, bool  *enable)
-{
-    return 1;
-}
