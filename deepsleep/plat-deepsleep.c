@@ -45,7 +45,8 @@ DeepSleep_Return_Status_t PLAT_DS_INIT(void)
 {
     if (DEEPSLEEPMGR_NOT_INITIALIZED == deepSleepStatus) {
         deepSleepStatus = DEEPSLEEPMGR_ALREADY_INITIALIZED;
-        // FIXME: RPi don't have any deep sleep support; DEEPSLEEPMGR_INIT_FAILURE is not required.
+        // NOTE: RPi don't have any deep sleep support; DEEPSLEEPMGR_INIT_FAILURE is not required.
+        DEBUG_MSG("PLAT_DS_INIT: RPi don't have any deep sleep support.\r\n");
         return DEEPSLEEPMGR_SUCCESS;
     }
     return DEEPSLEEPMGR_ALREADY_INITIALIZED;
@@ -57,6 +58,7 @@ DeepSleep_Return_Status_t PLAT_DS_TERM(void)
 {
     if (DEEPSLEEPMGR_ALREADY_INITIALIZED == deepSleepStatus) {
         deepSleepStatus = DEEPSLEEPMGR_NOT_INITIALIZED;
+        DEBUG_MSG("PLAT_DS_INIT: RPi don't have any deep sleep support.\r\n");
         return DEEPSLEEPMGR_SUCCESS;
     }
     return DEEPSLEEPMGR_NOT_INITIALIZED;
@@ -74,12 +76,12 @@ DeepSleep_Return_Status_t PLAT_DS_TERM(void)
 DeepSleep_Return_Status_t PLAT_DS_SetDeepSleep(uint32_t deep_sleep_timeout, bool *isGPIOWakeup, bool networkStandby)
 {
     if (NULL == isGPIOWakeup) {
-        return DEEPSLEEPMGR_INVALID_PARAM;
+        return DEEPSLEEPMGR_INVALID_ARGUMENT;
     }
     if (DEEPSLEEPMGR_ALREADY_INITIALIZED == deepSleepStatus) {
         // FIXME: RPi don't have any deep sleep support.
         DEBUG_MSG("PLAT_DS_SetDeepSleep: RPi don't have any deep sleep support.\r\n");
-        return DEEPSLEEP_SET_FAILURE;
+        return DEEPSLEEPMGR_SET_FAILURE;
     }
     return DEEPSLEEPMGR_NOT_INITIALIZED;
 }
@@ -98,7 +100,7 @@ DeepSleep_Return_Status_t PLAT_DS_DeepSleepWakeup(void)
     if (DEEPSLEEPMGR_ALREADY_INITIALIZED == deepSleepStatus) {
         // FIXME: RPi don't have any deep sleep support.
         DEBUG_MSG("PLAT_DS_DeepSleepWakeup: RPi don't have any deep sleep support.\r\n");
-        return DEEPSLEEP_WAKEUP_FAILURE;
+        return DEEPSLEEPMGR_WAKEUP_FAILURE;
     }
     return DEEPSLEEPMGR_NOT_INITIALIZED;
 }
