@@ -17,33 +17,10 @@
  * limitations under the License.
 */
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <assert.h>
-#include <sys/time.h>
-#include <pthread.h>
-#include <errno.h>
-#include <string.h>
-
-#include <limits.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <netdb.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/un.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
-
-
 #include <stdint.h>
 #include <stdbool.h>
 
 #include "deepSleepMgr.h"
-#include "pwrMgr.h"
 
 #define DEBUG_PLAT
 
@@ -53,6 +30,7 @@
 #define DEBUG_MSG(x,y...) {;}
 #endif
 
+static DeepSleep_Return_Status_t deepSleepStatus = DEEPSLEEPMGR_NOT_INITIALIZED;
 
 /**
  * @brief Initialize the underlying DeepSleep module.
@@ -65,14 +43,23 @@
  */
 DeepSleep_Return_Status_t PLAT_DS_INIT(void)
 {
-    return DEEPSLEEPMGR_SUCCESS;
+    if (DEEPSLEEPMGR_NOT_INITIALIZED == deepSleepStatus) {
+        deepSleepStatus = DEEPSLEEPMGR_ALREADY_INITIALIZED;
+        // FIXME: RPi don't have any deep sleep support; DEEPSLEEPMGR_INIT_FAILURE is not required.
+        return DEEPSLEEPMGR_SUCCESS;
+    }
+    return DEEPSLEEPMGR_ALREADY_INITIALIZED;
 }
 
 
 
 DeepSleep_Return_Status_t PLAT_DS_TERM(void)
 {
-    return DEEPSLEEPMGR_SUCCESS;
+    if (DEEPSLEEPMGR_ALREADY_INITIALIZED == deepSleepStatus) {
+        deepSleepStatus = DEEPSLEEPMGR_NOT_INITIALIZED;
+        return DEEPSLEEPMGR_SUCCESS;
+    }
+    return DEEPSLEEPMGR_NOT_INITIALIZED;
 }
 
 /**
@@ -86,8 +73,15 @@ DeepSleep_Return_Status_t PLAT_DS_TERM(void)
  */
 DeepSleep_Return_Status_t PLAT_DS_SetDeepSleep(uint32_t deep_sleep_timeout, bool *isGPIOWakeup, bool networkStandby)
 {
-    DEBUG_MSG("PLAT_DS_SetDeepSleep: putting to sleep, wakeup %d..\r\n", deep_sleep_timeout);
-    return DEEPSLEEPMGR_SUCCESS;
+    if (NULL == isGPIOWakeup) {
+        return DEEPSLEEPMGR_INVALID_PARAM;
+    }
+    if (DEEPSLEEPMGR_ALREADY_INITIALIZED == deepSleepStatus) {
+        // FIXME: RPi don't have any deep sleep support.
+        DEBUG_MSG("PLAT_DS_SetDeepSleep: RPi don't have any deep sleep support.\r\n");
+        return DEEPSLEEP_SET_FAILURE;
+    }
+    return DEEPSLEEPMGR_NOT_INITIALIZED;
 }
 
 
@@ -101,22 +95,40 @@ DeepSleep_Return_Status_t PLAT_DS_SetDeepSleep(uint32_t deep_sleep_timeout, bool
  */
 DeepSleep_Return_Status_t PLAT_DS_DeepSleepWakeup(void)
 {
-    DEBUG_MSG("PLAT_DS_DeepSleepWakeup: waking up from deep sleep\r\n");
-    return DEEPSLEEPMGR_SUCCESS;
+    if (DEEPSLEEPMGR_ALREADY_INITIALIZED == deepSleepStatus) {
+        // FIXME: RPi don't have any deep sleep support.
+        DEBUG_MSG("PLAT_DS_DeepSleepWakeup: RPi don't have any deep sleep support.\r\n");
+        return DEEPSLEEP_WAKEUP_FAILURE;
+    }
+    return DEEPSLEEPMGR_NOT_INITIALIZED;
 }
 
 DeepSleep_Return_Status_t  PLAT_DS_GetLastWakeupReason(DeepSleep_WakeupReason_t *wakeupReason)
 {
-    DEBUG_MSG("PLAT_DS_GetLastWakeupReason: Get Last Wakeup Reason: DEEPSLEEP_WAKEUPREASON_UNKNOWN");
-    *wakeupReason = DEEPSLEEP_WAKEUPREASON_UNKNOWN;
-    return DEEPSLEEPMGR_SUCCESS;
+    if (NULL == wakeupReason) {
+        return DEEPSLEEPMGR_INVALID_ARGUMENT;
+    }
+    if (DEEPSLEEPMGR_ALREADY_INITIALIZED == deepSleepStatus) {
+        // FIXME: RPi don't have any deep sleep support.
+        DEBUG_MSG("PLAT_DS_GetLastWakeupReason: RPi don't have any deep sleep support.\r\n");
+        *wakeupReason = DEEPSLEEP_WAKEUPREASON_UNKNOWN;
+        return DEEPSLEEPMGR_SUCCESS;
+    }
+    return DEEPSLEEPMGR_NOT_INITIALIZED;
 }
 
 DeepSleep_Return_Status_t PLAT_DS_GetLastWakeupKeyCode(DeepSleepMgr_WakeupKeyCode_Param_t *wakeupKeyCode)
 {
-    DEBUG_MSG("PLAT_DS_GetLastWakeupKeyCode: Get Last Wakeup KeyCode: 0");
-    wakeupKeyCode->keyCode = 0;
-    return DEEPSLEEPMGR_SUCCESS;
+    if (NULL == wakeupKeyCode) {
+        return DEEPSLEEPMGR_INVALID_ARGUMENT;
+    }
+    if (DEEPSLEEPMGR_ALREADY_INITIALIZED == deepSleepStatus) {
+        // TODO: RPi don't have any deep sleep support. Get the last wakeup key code fi available.
+        DEBUG_MSG("PLAT_DS_GetLastWakeupKeyCode: RPi don't have any deep sleep support.\r\n");
+        wakeupKeyCode->keyCode = 0;
+        return DEEPSLEEPMGR_SUCCESS;
+    }
+    return DEEPSLEEPMGR_NOT_INITIALIZED;
 }
 
 int32_t PLAT_API_SetWakeupSrc(WakeupSrcType_t  srcType, bool  enable)
