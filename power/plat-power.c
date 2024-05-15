@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+
 #include "plat_power.h"
 
 static PWRMgr_PowerState_t power_state;
@@ -386,7 +387,7 @@ pmStatus_t PLAT_Reset( PWRMgr_PowerState_t newState )
         }
         return PWRMGR_SUCCESS;
     }
-    return PWRMGR_SUCCESS;
+    return PWRMGR_INVALID_ARGUMENT;
 }
 
 void PLAT_WHReset()
