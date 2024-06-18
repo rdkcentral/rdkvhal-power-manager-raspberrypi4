@@ -1,5 +1,5 @@
 /*
- * If not stated otherwise in this file or this component's Licenses.txt file the
+ * If not stated otherwise in this file or this component's LICENSE file the
  * following copyright and licenses apply:
  *
  * Copyright 2017 RDK Management
@@ -18,9 +18,55 @@
 */
 #include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
+
 #include "plat_power.h"
 
 static PWRMgr_PowerState_t power_state;
+static pmStatus_t powerMgrStatus = PWRMGR_NOT_INITIALIZED;
+
+pthread_t worker_thread;
+pthread_mutex_t power_state_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * @brief A single shot worker thread to handle the power state changes.
+ * RPi does not have proper PowerManager implementation.
+ * Some references:
+ * https://learn.pi-supply.com/make/how-to-save-power-on-your-raspberry-pi/
+ * https://forums.raspberrypi.com/viewtopic.php?t=257144
+ * https://blues.com/blog/tips-tricks-optimizing-raspberry-pi-power/
+ */
+static void *powerMgrWorkerThread(void *arg) {
+    PWRMgr_PowerState_t received_state;
+
+    pthread_mutex_lock(&power_state_mutex);
+    received_state = *(PWRMgr_PowerState_t*)arg;
+    pthread_mutex_unlock(&power_state_mutex);
+
+    printf("Power state: %d\n", received_state);
+    switch (received_state) {
+        case PWRMGR_POWERSTATE_OFF:
+            printf("Powering off\n");
+            system("poweroff");
+            break;
+        case PWRMGR_POWERSTATE_STANDBY:
+            printf("Powering to standby\n");
+            break;
+        case PWRMGR_POWERSTATE_ON:
+            printf("Powering on\n");
+            break;
+        case PWRMGR_POWERSTATE_STANDBY_LIGHT_SLEEP:
+            printf("Powering to standby light sleep\n");
+            break;
+        case PWRMGR_POWERSTATE_STANDBY_DEEP_SLEEP:
+            printf("Powering to standby deep sleep\n");
+            break;
+        default:
+            printf("Invalid power state\n");
+            break;
+    }
+    return NULL;
+}
 
 /**
  * @brief Initialize the underlying Power Management module.
@@ -33,8 +79,24 @@ static PWRMgr_PowerState_t power_state;
  */
 pmStatus_t PLAT_INIT(void)
 {
-    power_state = PWRMGR_POWERSTATE_ON;
-    return PWRMGR_SUCCESS;
+    if (PWRMGR_NOT_INITIALIZED == powerMgrStatus) {
+        pthread_mutex_lock(&power_state_mutex);
+        power_state = PWRMGR_POWERSTATE_ON;
+        pthread_mutex_unlock(&power_state_mutex);
+        /* TODO: Act as per new state change requested. */
+        if (pthread_create(&worker_thread, NULL, powerMgrWorkerThread, &power_state) != 0) {
+            perror("Failed to create worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        if (pthread_detach(worker_thread) != 0) {
+            perror("Failed to detach worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        powerMgrStatus = PWRMGR_ALREADY_INITIALIZED;
+        return PWRMGR_SUCCESS;
+    }
+
+    return PWRMGR_ALREADY_INITIALIZED;
 }
 
 /**
@@ -48,9 +110,27 @@ pmStatus_t PLAT_INIT(void)
  */
 pmStatus_t PLAT_API_SetPowerState( PWRMgr_PowerState_t newState )
 {
-    /* TODO: Add standby mode */
-    power_state = newState;
-    return 0;
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+    // Verify that newState is one among PWRMgr_PowerState_t
+    if (newState >= PWRMGR_POWERSTATE_OFF && newState < PWRMGR_POWERSTATE_MAX) {
+        pthread_mutex_lock(&power_state_mutex);
+        power_state = newState;
+        pthread_mutex_unlock(&power_state_mutex);
+        /* TODO: Act as per new state change requested. */
+        if (pthread_create(&worker_thread, NULL, powerMgrWorkerThread, &power_state) != 0) {
+            perror("Failed to create worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        if (pthread_detach(worker_thread) != 0) {
+            perror("Failed to detach worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        return PWRMGR_SUCCESS;
+    }
+
+    return PWRMGR_INVALID_ARGUMENT;
 }
 
 /**
@@ -65,8 +145,81 @@ pmStatus_t PLAT_API_SetPowerState( PWRMgr_PowerState_t newState )
  */
 pmStatus_t PLAT_API_GetPowerState( PWRMgr_PowerState_t *curState )
 {
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+
+    if (NULL == curState) {
+        return PWRMGR_INVALID_ARGUMENT;
+    }
+
+    pthread_mutex_lock(&power_state_mutex);
     *curState = power_state;
-    return 0;
+    pthread_mutex_unlock(&power_state_mutex);
+
+    return PWRMGR_SUCCESS;
+}
+
+/**
+ * @brief Enables or disables the Wakeup source type
+ *
+ * @param [in] srcType  - Wake up source type
+ * @param [in] enable   - Enable or disable Wake up source
+ *                        True for enabled, false for disabled
+ *
+ * @return    pmStatus_t                        - Status
+ * @retval    PWRMGR_SUCCESS                    - Success
+ * @retval    PWRMGR_NOT_INITIALIZED            - Module is not initialised
+ * @retval    PWRMGR_OPERATION_NOT_SUPPORTED    - Wake up source type not supported
+ * @retval    PWRMGR_INVALID_ARGUMENT           - Parameter passed to this function is invalid
+ * @retval    PWRMGR_SET_FAILURE                - Failed to  power state
+ *
+ * @pre PLAT_INIT() must be called before calling this API
+ *
+ * @warning This API is Not thread safe
+ *
+ * @see PLAT_API_GetWakeupSrc(), PWRMGR_WakeupSrcType_t
+ */
+pmStatus_t PLAT_API_SetWakeupSrc(PWRMGR_WakeupSrcType_t srcType, bool enable) {
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+    if (!(srcType >= PWRMGR_WAKEUPSRC_VOICE && srcType < PWRMGR_WAKEUPSRC_MAX)) {
+        return PWRMGR_INVALID_ARGUMENT;
+    }
+    /* FIXME: RPi don't have WakeUp Source configurations at the moment. */
+    return PWRMGR_OPERATION_NOT_SUPPORTED;
+}
+
+/**
+ * @brief Checks if the wake up source is enabled or disabled for the device
+ *
+ * @param [in] srcType  - Wake up source type
+ * @param [out] enable  - Variable to store if wake up source type is enabled or disabled
+ *                        True for enabled, false for disabled
+ *
+ * @return    pmStatus_t                        - Status
+ * @retval    PWRMGR_SUCCESS                    - Success
+ * @retval    PWRMGR_NOT_INITIALIZED            - Module is not initialised
+ * @retval    PWRMGR_OPERATION_NOT_SUPPORTED    - Wake up source type not supported
+ * @retval    PWRMGR_INVALID_ARGUMENT           - Parameter passed to this function is invalid
+ * @retval    PWRMGR_GET_FAILURE                - Failed to get
+ *
+ * @pre PLAT_INIT() must be called before calling this API
+ *
+ * @warning This API is Not thread safe
+ *
+ * @see PWRMGR_WakeupSrcType_t, PLAT_API_SetWakeupSrc()
+ */
+pmStatus_t PLAT_API_GetWakeupSrc(PWRMGR_WakeupSrcType_t srcType, bool  *enable) {
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+    if (!(srcType >= PWRMGR_WAKEUPSRC_VOICE && srcType < PWRMGR_WAKEUPSRC_MAX) || NULL == enable) {
+        return PWRMGR_INVALID_ARGUMENT;
+    }
+    /* FIXME: RPi don't have WakeUp Source configurations at the moment. */
+    return PWRMGR_OPERATION_NOT_SUPPORTED;
 }
 
 #ifdef ENABLE_THERMAL_PROTECTION
@@ -206,13 +359,35 @@ int PLAT_API_GetClockSpeed(uint32_t *speed)
  */
 pmStatus_t PLAT_TERM( void )
 {
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+    powerMgrStatus = PWRMGR_NOT_INITIALIZED;
     return PWRMGR_SUCCESS;
 }
 
 pmStatus_t PLAT_Reset( PWRMgr_PowerState_t newState )
 {
-    system("reboot");
-    return PWRMGR_SUCCESS;
+    if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
+        return PWRMGR_NOT_INITIALIZED;
+    }
+    // Verify that newState is one among PWRMgr_PowerState_t
+    if (newState >= PWRMGR_POWERSTATE_OFF && newState < PWRMGR_POWERSTATE_MAX) {
+        pthread_mutex_lock(&power_state_mutex);
+        power_state = newState;
+        pthread_mutex_unlock(&power_state_mutex);
+        /* TODO: Act as per new state change requested. */
+        if (pthread_create(&worker_thread, NULL, powerMgrWorkerThread, &power_state) != 0) {
+            perror("Failed to create worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        if (pthread_detach(worker_thread) != 0) {
+            perror("Failed to detach worker thread");
+            return PWRMGR_OPERATION_NOT_SUPPORTED;
+        }
+        return PWRMGR_SUCCESS;
+    }
+    return PWRMGR_INVALID_ARGUMENT;
 }
 
 void PLAT_WHReset()
