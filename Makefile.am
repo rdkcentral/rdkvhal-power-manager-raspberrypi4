@@ -16,11 +16,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##########################################################################
-
-# only enable deepsleep if requested
-if DEEPSLEEP_ENABLED
-SUBDIRS = ir power deepsleep
-else
-SUBDIRS = ir power
-endif
-
+SUBDIRS = deepsleep
