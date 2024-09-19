@@ -61,14 +61,14 @@ AC_FUNC_MALLOC
 
 
 # check if deepsleep is enabled
-AC_ARG_ENABLE([dsleep],
-[  --enable-dsleep    Enable deepsleep],
-[case "${enableval}" in
-  yes) dsleep=true ;;
-  no)  dsleep=false ;;
-  *) AC_MSG_ERROR([bad value ${enableval} for --enable-dsleep]) ;;
-esac],[dsleep=false])
-AM_CONDITIONAL([DEEPSLEEP_ENABLED], [test x$dsleep = xtrue])
+#AC_ARG_ENABLE([dsleep],
+#[  --enable-dsleep    Enable deepsleep],
+#[case "${enableval}" in
+#  yes) dsleep=true ;;
+#  no)  dsleep=false ;;
+#  *) AC_MSG_ERROR([bad value ${enableval} for --enable-dsleep]) ;;
+#esac],[dsleep=false])
+#AM_CONDITIONAL([DEEPSLEEP_ENABLED], [test x$dsleep = xtrue])
 
 # check for termal protection
 AC_ARG_ENABLE([thermalprotection], [--enable-thermalprotection "Enable thermal protection"],
