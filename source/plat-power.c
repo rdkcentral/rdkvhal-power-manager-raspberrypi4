@@ -54,7 +54,6 @@ static void *powerMgrWorkerThread(void *arg) {
             break;
         case PWRMGR_POWERSTATE_ON:
             printf("Powering on\n");
-            system("reboot");
             break;
         case PWRMGR_POWERSTATE_STANDBY_LIGHT_SLEEP:
             printf("Powering to standby light sleep\n");
