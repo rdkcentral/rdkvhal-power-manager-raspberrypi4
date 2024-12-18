@@ -39,6 +39,10 @@ int thread_running = 1;
 // RPi4 Specific tunings. These are the options for the CPU frequency scaling governor:
 // conservative, ondemand, userspace, powersave, performance, schedutil
 /***
+ ** Some references:
+ * https://learn.pi-supply.com/make/how-to-save-power-on-your-raspberry-pi/
+ * https://forums.raspberrypi.com/viewtopic.php?t=257144
+ * https://blues.com/blog/tips-tricks-optimizing-raspberry-pi-power/
 conservative:
     Gradually increases and decreases the CPU frequency based on system load.
     Aims to save power while providing adequate performance.
