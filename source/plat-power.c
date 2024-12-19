@@ -27,6 +27,8 @@
 
 #include "plat_power.h"
 
+#define PWRHALVERSION "1.2.0"
+
 static PWRMgr_PowerState_t power_state;
 static pmStatus_t powerMgrStatus = PWRMGR_NOT_INITIALIZED;
 
@@ -165,51 +167,65 @@ char * rdkPowerStateToString(PWRMgr_PowerState_t state)
 static void *powerMgrWorkerThread(void *arg)
 {
     while (1) {
-        sem_wait(&power_state_semaphore);
-
-        pthread_mutex_lock(&power_state_mutex);
-        if (!thread_running) {
-            pthread_mutex_unlock(&power_state_mutex);
+        if (sem_wait(&power_state_semaphore) == -1) {
+            perror("powerMgrWorkerThread: Failed to wait on semaphore");
             break;
         }
-        PWRMgr_PowerState_t received_state = power_state;
-        pthread_mutex_unlock(&power_state_mutex);
 
-        printf("Power state change to '[%u] %s'.\n",
+        if (pthread_mutex_lock(&power_state_mutex) != 0) {
+            perror("powerMgrWorkerThread: Failed to lock mutex");
+            continue;
+        }
+
+        if (!thread_running) {
+            if (pthread_mutex_unlock(&power_state_mutex) != 0) {
+                perror("powerMgrWorkerThread: Failed to unlock mutex");
+            }
+            break;
+        }
+
+        PWRMgr_PowerState_t received_state = power_state;
+        if (pthread_mutex_unlock(&power_state_mutex) != 0) {
+            perror("powerMgrWorkerThread: Failed to unlock mutex");
+        }
+
+        printf("powerMgrWorkerThread: Power state change to '[%u] %s'.\n",
                 received_state, rdkPowerStateToString(received_state));
 
         switch (received_state) {
             case PWRMGR_POWERSTATE_OFF:
-                printf("Powering off\n");
+                printf("powerMgrWorkerThread: Powering off\n");
                 sync();
-                system("poweroff");
+                if (reboot(RB_POWER_OFF) != 0) {
+                    perror("powerMgrWorkerThread: Failed to power off");
+                }
                 break;
             case PWRMGR_POWERSTATE_STANDBY:
-                printf("Powering to standby\n");
+                printf("powerMgrWorkerThread: Powering to standby\n");
                 if (!setCPUFreqScalingGovernor("powersave")) {
-                    perror("Failed to set CPU frequency scaling governor to 'powersave'");
+                    perror("powerMgrWorkerThread: Failed to set CPU frequency scaling governor to 'powersave'");
                 }
                 break;
             case PWRMGR_POWERSTATE_ON:
-                printf("Powering on\n");
+                printf("powerMgrWorkerThread: Powering on\n");
                 if (!setCPUFreqScalingGovernor("performance")) {
-                    perror("Failed to set CPU frequency scaling governor to 'performance'");
+                    perror("powerMgrWorkerThread: Failed to set CPU frequency scaling governor to 'performance'");
                 }
                 break;
             case PWRMGR_POWERSTATE_STANDBY_LIGHT_SLEEP:
-                printf("Powering to standby light sleep\n");
+                printf("powerMgrWorkerThread: Powering to standby light sleep\n");
                 if (!setCPUFreqScalingGovernor("ondemand")) {
-                    perror("Failed to set CPU frequency scaling governor to 'ondemand'");
+                    perror("powerMgrWorkerThread: Failed to set CPU frequency scaling governor to 'ondemand'");
                 }
                 break;
             case PWRMGR_POWERSTATE_STANDBY_DEEP_SLEEP:
-                printf("Powering to standby deep sleep\n");
+                printf("powerMgrWorkerThread: Powering to standby deep sleep\n");
                 if (!setCPUFreqScalingGovernor("conservative")) {
-                    perror("Failed to set CPU frequency scaling governor to 'conservative'");
+                    perror("powerMgrWorkerThread: Failed to set CPU frequency scaling governor to 'conservative'");
                 }
                 break;
             default:
-                printf("Invalid power state\n");
+                printf("powerMgrWorkerThread: Invalid power state\n");
                 break;
         }
         sync();
@@ -227,24 +243,37 @@ static void *powerMgrWorkerThread(void *arg)
  */
 pmStatus_t PLAT_INIT(void)
 {
+    fprintf(stderr, "PLAT_INIT: PowerMgr HAL version: %s\n", PWRHALVERSION);
+
     if (access(CPU_FREQ_SCALING_GOVERNOR_PATH, F_OK | R_OK | W_OK) != 0) {
-        perror("Failed to access CPU frequency scaling governor file");
+        perror("PLAT_INIT: Failed to access CPU frequency scaling governor file");
         return PWRMGR_INIT_FAILURE;
     }
     if (PWRMGR_NOT_INITIALIZED == powerMgrStatus) {
-        pthread_mutex_lock(&power_state_mutex);
+        if (pthread_mutex_lock(&power_state_mutex) != 0) {
+            perror("PLAT_INIT: Failed to lock mutex");
+            return PWRMGR_INIT_FAILURE;
+        }
         power_state = PWRMGR_POWERSTATE_ON;
-        pthread_mutex_unlock(&power_state_mutex);
+        if (pthread_mutex_unlock(&power_state_mutex) != 0) {
+            perror("PLAT_INIT: Failed to unlock mutex");
+            return PWRMGR_INIT_FAILURE;
+        }
 
-        sem_init(&power_state_semaphore, 0, 0);
+        if (sem_init(&power_state_semaphore, 0, 0) != 0) {
+            perror("PLAT_INIT: Failed to initialize semaphore");
+            return PWRMGR_INIT_FAILURE;
+        }
         thread_running = 1;
 
         if (pthread_create(&worker_thread, NULL, powerMgrWorkerThread, NULL) != 0) {
-            perror("Failed to create worker thread");
+            perror("PLAT_INIT: Failed to create worker thread");
+            sem_destroy(&power_state_semaphore); // Clean up semaphore
             return PWRMGR_OPERATION_NOT_SUPPORTED;
         }
 
         powerMgrStatus = PWRMGR_ALREADY_INITIALIZED;
+        printf("PLAT_INIT: HAL init success.\n");
         return PWRMGR_SUCCESS;
     }
 
@@ -270,11 +299,20 @@ pmStatus_t PLAT_API_SetPowerState(PWRMgr_PowerState_t newState)
         return PWRMGR_NOT_INITIALIZED;
     }
     if (newState >= PWRMGR_POWERSTATE_OFF && newState < PWRMGR_POWERSTATE_MAX) {
-        pthread_mutex_lock(&power_state_mutex);
+        if (pthread_mutex_lock(&power_state_mutex) != 0) {
+            perror("PLAT_API_SetPowerState: Failed to lock mutex");
+            return PWRMGR_SET_FAILURE;
+        }
         power_state = newState;
-        pthread_mutex_unlock(&power_state_mutex);
+        if (pthread_mutex_unlock(&power_state_mutex) != 0) {
+            perror("PLAT_API_SetPowerState: Failed to unlock mutex");
+            return PWRMGR_SET_FAILURE;
+        }
 
-        sem_post(&power_state_semaphore);
+        if (sem_post(&power_state_semaphore) != 0) {
+            perror("PLAT_API_SetPowerState: Failed to post semaphore");
+            return PWRMGR_SET_FAILURE;
+        }
         return PWRMGR_SUCCESS;
     }
 
@@ -303,9 +341,17 @@ pmStatus_t PLAT_API_GetPowerState(PWRMgr_PowerState_t *curState)
         return PWRMGR_INVALID_ARGUMENT;
     }
 
-    pthread_mutex_lock(&power_state_mutex);
+    if (pthread_mutex_lock(&power_state_mutex) != 0) {
+        perror("PLAT_API_GetPowerState: Failed to lock mutex");
+        return PWRMGR_GET_FAILURE;
+    }
+
     *curState = power_state;
-    pthread_mutex_unlock(&power_state_mutex);
+
+    if (pthread_mutex_unlock(&power_state_mutex) != 0) {
+        perror("PLAT_API_GetPowerState: Failed to unlock mutex");
+        return PWRMGR_GET_FAILURE;
+    }
 
     return PWRMGR_SUCCESS;
 }
@@ -328,7 +374,8 @@ pmStatus_t PLAT_API_GetPowerState(PWRMgr_PowerState_t *curState)
  * @warning This API is Not thread safe
  * @see PLAT_API_GetWakeupSrc(), PWRMGR_WakeupSrcType_t
  */
-pmStatus_t PLAT_API_SetWakeupSrc(PWRMGR_WakeupSrcType_t srcType, bool enable) {
+pmStatus_t PLAT_API_SetWakeupSrc(PWRMGR_WakeupSrcType_t srcType, bool enable)
+{
     if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
         return PWRMGR_NOT_INITIALIZED;
     }
@@ -359,7 +406,8 @@ pmStatus_t PLAT_API_SetWakeupSrc(PWRMGR_WakeupSrcType_t srcType, bool enable) {
  *
  * @see PWRMGR_WakeupSrcType_t, PLAT_API_SetWakeupSrc()
  */
-pmStatus_t PLAT_API_GetWakeupSrc(PWRMGR_WakeupSrcType_t srcType, bool  *enable) {
+pmStatus_t PLAT_API_GetWakeupSrc(PWRMGR_WakeupSrcType_t srcType, bool  *enable)
+{
     if (PWRMGR_ALREADY_INITIALIZED != powerMgrStatus) {
         return PWRMGR_NOT_INITIALIZED;
     }
@@ -371,6 +419,16 @@ pmStatus_t PLAT_API_GetWakeupSrc(PWRMGR_WakeupSrcType_t srcType, bool  *enable) 
 }
 
 #ifdef ENABLE_THERMAL_PROTECTION
+
+#define CPU_FREQ_SCALING_CUR_FREQ_PATH  "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"
+#define CPU_FREQ_SCALING_SETSPEED_PATH  "/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed"
+#define CPU_FREQ_SCALING_CUR_FREQ_PATH  "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"
+#define THERMAL_ZONE_TEMPERATURE_PATH   "/sys/class/thermal/thermal_zone0/temp"
+
+/* Warning: not tuned; before enabling; finetune these */
+#define NORMAL_CLOCK_SPEED  1000 // value for normal state
+#define SCALED_CLOCK_SPEED  900 // value for scaled state
+#define MINIMAL_CLOCK_SPEED 600  // value for minimal state
 
 static float g_fTempThresholdHigh = 60.0f;
 static float g_fTempThresholdCritical = 75.0f;
@@ -387,32 +445,43 @@ static float g_fTempThresholdCritical = 75.0f;
  * @return Returns the status of the operation.
  * @retval 0 if successful, appropiate error code otherwise.
 */
-int PLAT_API_GetTemperature(IARM_Bus_PWRMgr_ThermalState_t *curState, float *curTemperature, float *wifiTemperature)
+int PLAT_API_GetTemperature(mfrTemperatureState_t *curState, float *curTemperature, float *wifiTemperature)
 {
-    if ( curState == NULL || curTemperature == NULL || wifiTemperature == NULL )
-        return IARM_RESULT_INVALID_PARAM;
+    if ( curState == NULL || curTemperature == NULL || wifiTemperature == NULL ) {
+        return mfrERR_INVALID_PARAM;
+    }
 
     int value = 0;
     float temp = 0.0f;
-    IARM_Bus_PWRMgr_ThermalState_t state = IARM_BUS_PWRMGR_TEMPERATURE_NORMAL;
+    IARM_Bus_PWRMgr_ThermalState_t state = mfrTEMPERATURE_NORMAL;
 
-    FILE* fp = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
-    if( fp != NULL )
-    {
-        fscanf (fp, "%d", &value);
+    if (access(THERMAL_ZONE_TEMPERATURE_PATH, F_OK | R_OK) != 0) {
+        perror("PLAT_API_GetTemperature: Failed to access thermal zone0 temp file");
+        return mfrERR_TEMP_READ_FAILED;
+    }
+
+    FILE* fp = fopen(THERMAL_ZONE_TEMPERATURE_PATH, "r");
+    if (fp == NULL) {
+        perror("PLAT_API_GetTemperature: Failed to open thermal zone0 temp file");
+        return mfrERR_TEMP_READ_FAILED;
+    }
+
+    if (fscanf(fp, "%d", &value) != 1) {
+        perror("PLAT_API_GetTemperature: Failed to read thermal zone0 temp file");
         fclose(fp);
+        return mfrERR_TEMP_READ_FAILED;
     }
 
     temp = value / 1000;
     *curTemperature = temp;
 
     if( temp >= g_fTempThresholdHigh )
-        state = IARM_BUS_PWRMGR_TEMPERATURE_HIGH;
+        state = mfrTEMPERATURE_HIGH;
     if( temp >= g_fTempThresholdCritical )
-        state = IARM_BUS_PWRMGR_TEMPERATURE_CRITICAL;
+        state = mfrTEMPERATURE_CRITICAL;
 
     *curState = state;
-    return IARM_RESULT_SUCCESS;
+    return mfrERR_NONE;
 }
 
 /**
@@ -428,10 +497,20 @@ int PLAT_API_GetTemperature(IARM_Bus_PWRMgr_ThermalState_t *curState, float *cur
  */
 int PLAT_API_SetTempThresholds(float tempHigh, float tempCritical)
 {
-    g_fTempThresholdHigh     = tempHigh;
+    if (tempHigh < 0 || tempCritical < 0) {
+        printf("PLAT_API_SetTempThresholds: Temperature thresholds must be non-negative\n");
+        return mfrERR_INVALID_PARAM;
+    }
+
+    if (tempCritical < tempHigh) {
+        printf("PLAT_API_SetTempThresholds: Critical temperature threshold must be greater than or equal to high temperature threshold\n");
+        return mfrERR_INVALID_PARAM;
+    }
+
+    g_fTempThresholdHigh = tempHigh;
     g_fTempThresholdCritical = tempCritical;
 
-    return IARM_RESULT_SUCCESS;
+    return mfrERR_NONE;
 }
 
 /**
@@ -447,13 +526,14 @@ int PLAT_API_SetTempThresholds(float tempHigh, float tempCritical)
  */
 int PLAT_API_GetTempThresholds(float *tempHigh, float *tempCritical)
 {
-    if( tempHigh == NULL || tempCritical == NULL )
-        return IARM_RESULT_INVALID_PARAM;
+    if (tempHigh == NULL || tempCritical == NULL) {
+        return mfrERR_INVALID_PARAM;
+    }
 
-    *tempHigh     = g_fTempThresholdHigh;
+    *tempHigh = g_fTempThresholdHigh;
     *tempCritical = g_fTempThresholdCritical;
 
-    return IARM_RESULT_SUCCESS;
+    return mfrERR_NONE;
 }
 
 /**
@@ -467,7 +547,42 @@ int PLAT_API_GetTempThresholds(float *tempHigh, float *tempCritical)
  */
 int PLAT_API_DetemineClockSpeeds(uint32_t *cpu_rate_Normal, uint32_t *cpu_rate_Scaled, uint32_t *cpu_rate_Minimal)
 {
-    return IARM_RESULT_SUCCESS;
+    if (cpu_rate_Normal == NULL || cpu_rate_Scaled == NULL || cpu_rate_Minimal == NULL) {
+        return mfrERR_INVALID_PARAM;
+    }
+#if 0 /* Enable when proper HAL Spec is available. */
+    // Return predefined clock speeds
+    *cpu_rate_Normal = NORMAL_CLOCK_SPEED;
+    *cpu_rate_Scaled = SCALED_CLOCK_SPEED;
+    *cpu_rate_Minimal = MINIMAL_CLOCK_SPEED;
+
+    if (access(CPU_FREQ_SCALING_CUR_FREQ_PATH, F_OK | R_OK) != 0) {
+        perror("Failed to access CPU frequency scaling current frequency file");
+        return mfrERR_FLASH_READ_FAILED;
+    }
+
+    FILE *fp = fopen(CPU_FREQ_SCALING_CUR_FREQ_PATH, "r");
+    if (fp == NULL) {
+        perror("Failed to open CPU frequency scaling current frequency file");
+        return mfrERR_FLASH_READ_FAILED;
+    }
+
+    int value = 0;
+    if (fscanf(fp, "%d", &value) != 1) {
+        perror("Failed to read CPU frequency scaling current frequency file");
+        fclose(fp);
+        return mfrERR_FLASH_READ_FAILED;
+    }
+    fclose(fp);
+
+    // Value read is in kHz, convert it to MHz
+    uint32_t current_speed = value / 1000;
+    printf("Current CPU clock speed: %u MHz\n", current_speed);
+    return mfrERR_NONE;
+#else
+    printf("PLAT_API_DetemineClockSpeeds: Not implemented\n");
+    return mfrERR_OPERATION_NOT_SUPPORTED;
+#endif
 }
 
 /**
@@ -479,7 +594,53 @@ int PLAT_API_DetemineClockSpeeds(uint32_t *cpu_rate_Normal, uint32_t *cpu_rate_S
  */
 int PLAT_API_SetClockSpeed(uint32_t speed)
 {
-    return IARM_RESULT_SUCCESS;
+#if 0 /* Enable when proper HAL Spec is available. */
+    uint32_t speed_khz = speed * 1000;
+    if (access(CPU_FREQ_SCALING_SETSPEED_PATH, F_OK | W_OK) != 0) {
+        perror("Failed to access CPU frequency scaling set speed file");
+        return mfrERR_FLASH_READ_FAILED;
+    }
+    // Check if the scaling_setspeed file is supported
+    FILE *fp = fopen(CPU_FREQ_SCALING_SETSPEED_PATH, "r");
+    if (fp == NULL) {
+        perror("Failed to open CPU frequency scaling set speed file for reading");
+        return mfrERR_FLASH_READ_FAILED;
+    }
+
+    char buffer[32] = {0};
+    if (fgets(buffer, sizeof(buffer), fp) == NULL) {
+        perror("Failed to read CPU frequency scaling set speed file");
+        fclose(fp);
+        return mfrERR_FLASH_READ_FAILED;
+    }
+    fclose(fp);
+
+    if (strncmp(buffer, "<unsupported>", 13) == 0) {
+        fprintf(stderr, "CPU frequency scaling set speed is unsupported\n");
+        return mfrERR_OPERATION_NOT_SUPPORTED;
+    }
+
+    fp = fopen(CPU_FREQ_SCALING_SETSPEED_PATH, "w");
+    if (fp == NULL) {
+        perror("Failed to open CPU frequency scaling set speed file for writing");
+        return mfrERR_WRITE_FLASH_FAILED;
+    }
+
+    if (fprintf(fp, "%u", speed_khz) < 0) {
+        perror("Failed to write CPU frequency scaling set speed file");
+        fclose(fp);
+        return mfrERR_WRITE_FLASH_FAILED;
+    }
+
+    if (fclose(fp) != 0) {
+        perror("Failed to close CPU frequency scaling set speed file");
+        return mfrERR_WRITE_FLASH_FAILED;
+    }
+    return mfrERR_NONE;
+#else
+    printf("PLAT_API_SetClockSpeed: Not implemented\n");
+    return mfrERR_OPERATION_NOT_SUPPORTED;
+#endif
 }
 
 /**
@@ -490,7 +651,35 @@ int PLAT_API_SetClockSpeed(uint32_t speed)
  */
 int PLAT_API_GetClockSpeed(uint32_t *speed)
 {
-    return IARM_RESULT_SUCCESS;
+    if (speed == NULL) {
+        return mfrERR_INVALID_PARAM;
+    }
+#if 0 /* Enable when proper HAL Spec is available. */
+    if (access(CPU_FREQ_SCALING_CUR_FREQ_PATH, F_OK | R_OK) != 0) {
+        perror("Failed to access CPU frequency scaling current frequency file");
+        return mfrERR_FLASH_READ_FAILED;
+    }
+    FILE *fp = fopen(CPU_FREQ_SCALING_CUR_FREQ_PATH, "r");
+    if (fp == NULL) {
+        perror("Failed to open CPU frequency scaling current frequency file");
+        return mfrERR_FLASH_READ_FAILED;
+    }
+
+    int value = 0;
+    if (fscanf(fp, "%d", &value) != 1) {
+        perror("Failed to read CPU frequency scaling current frequency file");
+        fclose(fp);
+        return mfrERR_FLASH_READ_FAILED;
+    }
+    fclose(fp);
+
+    // The value read is in kHz, convert it to MHz
+    *speed = value / 1000;
+    return mfrERR_NONE;
+#else
+    printf("PLAT_API_GetClockSpeed: Not implemented\n");
+    return mfrERR_OPERATION_NOT_SUPPORTED;
+#endif
 }
 
 #endif //ENABLE_THERMAL_PROTECTION
@@ -515,11 +704,27 @@ pmStatus_t PLAT_TERM(void)
         return PWRMGR_NOT_INITIALIZED;
     }
 
-    pthread_mutex_lock(&power_state_mutex);
+    if (pthread_mutex_lock(&power_state_mutex) != 0) {
+        perror("PLAT_TERM: Failed to lock mutex");
+        return PWRMGR_TERM_FAILURE;
+    }
+
     thread_running = 0;
-    pthread_mutex_unlock(&power_state_mutex);
-    sem_post(&power_state_semaphore);
-    pthread_join(worker_thread, NULL);
+
+    if (pthread_mutex_unlock(&power_state_mutex) != 0) {
+        perror("PLAT_TERM: Failed to unlock mutex");
+        return PWRMGR_TERM_FAILURE;
+    }
+
+    if (sem_post(&power_state_semaphore) != 0) {
+        perror("PLAT_TERM: Failed to post semaphore");
+        return PWRMGR_TERM_FAILURE;
+    }
+
+    if (pthread_join(worker_thread, NULL) != 0) {
+        perror("PLAT_TERM: Failed to join worker thread");
+        return PWRMGR_TERM_FAILURE;
+    }
 
     powerMgrStatus = PWRMGR_NOT_INITIALIZED;
     return PWRMGR_SUCCESS;
@@ -551,16 +756,42 @@ pmStatus_t PLAT_Reset(PWRMgr_PowerState_t newState)
         return PWRMGR_NOT_INITIALIZED;
     }
 
-    pthread_mutex_lock(&power_state_mutex);
+    if (!(newState >= PWRMGR_POWERSTATE_OFF && newState < PWRMGR_POWERSTATE_MAX)) {
+        return PWRMGR_INVALID_ARGUMENT;
+    }
+
+    if (pthread_mutex_lock(&power_state_mutex) != 0) {
+        perror("PLAT_Reset: Failed to lock mutex");
+        return PWRMGR_SET_FAILURE;
+    }
+
     thread_running = 0;
-    pthread_mutex_unlock(&power_state_mutex);
-    sem_post(&power_state_semaphore);
-    pthread_join(worker_thread, NULL);
+
+    if (pthread_mutex_unlock(&power_state_mutex) != 0) {
+        perror("PLAT_Reset: Failed to unlock mutex");
+        return PWRMGR_SET_FAILURE;
+    }
+
+    if (sem_post(&power_state_semaphore) != 0) {
+        perror("PLAT_Reset: Failed to post semaphore");
+        return PWRMGR_SET_FAILURE;
+    }
+
+    if (pthread_join(worker_thread, NULL) != 0) {
+        perror("PLAT_Reset: Failed to join worker thread");
+        return PWRMGR_SET_FAILURE;
+    }
 
     if (newState == PWRMGR_POWERSTATE_OFF) {
-        reboot(RB_POWER_OFF);
+        if (reboot(RB_POWER_OFF) != 0) {
+            perror("PLAT_Reset: Failed to power off");
+            return PWRMGR_SET_FAILURE;
+        }
     } else {
-        reboot(RB_AUTOBOOT);
+        if (reboot(RB_AUTOBOOT) != 0) {
+            perror("PLAT_Reset: Failed to reboot");
+            return PWRMGR_SET_FAILURE;
+        }
     }
 
     // Caller is not supposed to get a return from this function.
