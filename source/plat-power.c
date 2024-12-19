@@ -60,6 +60,7 @@ powersave:
     Sets the CPU frequency to the minimum available.
     Maximizes power saving at the cost of performance.
     Suitable for scenarios where power consumption is critical.
+    Note: its not working on RPi4 producing 'write error: Invalid argument'
 performance:
     Sets the CPU frequency to the maximum available.
     Maximizes performance at the cost of higher power consumption.
@@ -202,8 +203,8 @@ static void *powerMgrWorkerThread(void *arg)
                 break;
             case PWRMGR_POWERSTATE_STANDBY:
                 printf("powerMgrWorkerThread: Powering to standby\n");
-                if (!setCPUFreqScalingGovernor("powersave")) {
-                    perror("powerMgrWorkerThread: Failed to set CPU frequency scaling governor to 'powersave'");
+                if (!setCPUFreqScalingGovernor("conservative")) {
+                    perror("powerMgrWorkerThread: Failed to set CPU frequency scaling governor to 'conservative'");
                 }
                 break;
             case PWRMGR_POWERSTATE_ON:
@@ -220,7 +221,7 @@ static void *powerMgrWorkerThread(void *arg)
                 break;
             case PWRMGR_POWERSTATE_STANDBY_DEEP_SLEEP:
                 printf("powerMgrWorkerThread: Powering to standby deep sleep\n");
-                if (!setCPUFreqScalingGovernor("conservative")) {
+                if (!setCPUFreqScalingGovernor("schedutil")) {
                     perror("powerMgrWorkerThread: Failed to set CPU frequency scaling governor to 'conservative'");
                 }
                 break;
@@ -268,7 +269,7 @@ pmStatus_t PLAT_INIT(void)
 
         if (pthread_create(&worker_thread, NULL, powerMgrWorkerThread, NULL) != 0) {
             perror("PLAT_INIT: Failed to create worker thread");
-            sem_destroy(&power_state_semaphore); // Clean up semaphore
+            sem_destroy(&power_state_semaphore);
             return PWRMGR_OPERATION_NOT_SUPPORTED;
         }
 
