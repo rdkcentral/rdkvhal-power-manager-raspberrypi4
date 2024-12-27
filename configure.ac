@@ -40,6 +40,13 @@ AC_SUBST(IARMMGRS_HAL_POWER_LIBS)
 IARMMGRS_HAL_POWER_CFLAGS="-I$PKG_CONFIG_SYSROOT_DIR/usr/include/rdk/iarmmgrs-hal \
                            -I$PKG_CONFIG_SYSROOT_DIR/usr/include/rdk/iarmbus"
 
+# Security CFLAGS for code integrity
+SECURITY_CFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -pie -Wl,-z,relro,-z,now"
+
+# Combine the security CFLAGS and Werror with the existing CFLAGS
+CFLAGS="$CFLAGS $IARMMGRS_HAL_POWER_CFLAGS $SECURITY_CFLAGS -Werror"
+AC_SUBST(CFLAGS)
+
 AC_SUBST(IARMMGRS_HAL_POWER_CFLAGS)
 
 # Checks for header files.
