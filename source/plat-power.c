@@ -34,7 +34,6 @@ static pmStatus_t powerMgrStatus = PWRMGR_NOT_INITIALIZED;
 
 pthread_t worker_thread;
 pthread_mutex_t power_state_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t power_state_cond = PTHREAD_COND_INITIALIZER;
 sem_t power_state_semaphore;
 int thread_running = 1;
 
